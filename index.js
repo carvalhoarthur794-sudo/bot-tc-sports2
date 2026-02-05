@@ -5,42 +5,55 @@ const app = express();
 app.use(express.json());
 
 const INSTANCE_ID = process.env.INSTANCE_ID;
-const TOKEN = process.env.TOKEN;
+const ZAPI_TOKEN = process.env.ZAPI_TOKEN;
+const ZAPI_URL = process.env.ZAPI_URL || "https://api.z-api.io";
+
+const instanceBase = `${ZAPI_URL}/instances/${INSTANCE_ID}/token/${ZAPI_TOKEN}`;
 
 app.get("/", (req, res) => {
-  res.send("Bot online");
+  res.send("ONLINE");
 });
 
 app.post("/webhook", async (req, res) => {
   try {
-    console.log("Webhook recebido:", JSON.stringify(req.body, null, 2));
+    // responde rápido pro webhook não ficar pendurado
+    res.sendStatus(200);
 
+    console.log("WEBHOOK RECEBIDO:");
+    console.log(JSON.stringify(req.body, null, 2));
+
+    // formato que costuma vir da Z-API:
     const phone = req.body.phone;
-    const message = req.body?.text?.message;
+    const msg = req.body?.text?.message;
 
-    if (!phone || !message) {
-      return res.sendStatus(200);
+    // ignora se não tiver mensagem
+    if (!phone || !msg) {
+      console.log("Sem phone ou msg. Ignorando.");
+      return;
     }
 
-    await axios.post(
-      `https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/send-text`,
-      {
-        phone: phone,
-        message:
-          "Bem-vindo a TC Sports.\n" +
-          "Times do Brasil, Europa e selecoes.\n" +
-          "Digite o nome do time."
-      }
-    );
+    // ignora mensagens enviadas por você (pra não loopar)
+    if (req.body.fromMe === true) {
+      console.log("Mensagem fromMe=true. Ignorando.");
+      return;
+    }
 
-    res.sendStatus(200);
+    const reply = `Recebi: ${msg}\n\nDigite 1 para Times\nDigite 2 para Selecoes`;
+
+    // envia resposta
+    const r = await axios.post(`${instanceBase}/send-text`, {
+      phone: phone,
+      message: reply
+    });
+
+    console.log("Resposta enviada. Status:", r.status);
+    console.log("Retorno:", JSON.stringify(r.data, null, 2));
   } catch (err) {
-    console.log("Erro:", err.response?.data || err.message);
-    res.sendStatus(200);
+    console.log("ERRO AO RESPONDER:");
+    console.log(err?.response?.status, err?.response?.data || err.message);
   }
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log("Servidor rodando na porta " + PORT);
-});
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => console.log("Rodando na porta", PORT));
+
